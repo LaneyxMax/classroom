@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>快乐积分乐园</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Comic Sans MS', cursive; 
+            background: #f9f3e9; 
+            padding: 20px; 
+        }
+        .header {
+            background: #FFB6C1;
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .student-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .student-card {
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            border: 2px solid #FFD700;
+        }
+        .student-id {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .student-name {
+            font-weight: bold;
+            margin: 5px 0;
+            color: #FF69B4;
+        }
+        .score-box {
+            background: #87CEEB;
+            border-radius: 10px;
+            padding: 8px;
+            margin: 10px 0;
+        }
+        .coins-box {
+            background: #98FB98;
+            border-radius: 10px;
+            padding: 8px;
+            margin: 10px 0;
+        }
+        .negative { color: red; }
+        button {
+            background: #FFB6C1;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 15px;
+            margin: 3px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover { transform: scale(1.05); }
+        .controls {
+            background: #E6E6FA;
+            padding: 15px;
+            border-radius: 15px;
+            margin: 15px 0;
+        }
+        #modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background: white;
+            margin: 10% auto;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+            border-radius: 15px;
+        }
+        input[type="number"] {
+            padding: 8px;
+            border-radius: 15px;
+            border: 2px solid #87CEEB;
+            margin: 5px;
+            width: 80px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✨ 快乐积分乐园 ✨ <span id="date"></span></h1>
+        <div>
+            <button onclick="exportData()">📤 导出数据</button>
+            <button onclick="clearScores()" style="background:#ff9966">🧹 清除积分</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <h3>批量操作</h3>
+        <input type="number" id="batchScore" placeholder="分数值" min="0">
+        <button onclick="batchAdd()">🎉 全班加分</button>
+        <button onclick="batchSubtract()">🌀 全班减分</button>
+        <button onclick="showAddStudent()">➕ 添加学生</button>
+        <button onclick="showAddPrize()">🎁 管理奖品</button>
+    </div>
+
+    <div class="student-grid" id="studentContainer"></div>
+
+    <div id="modal">
+        <div class="modal-content">
+            <div id="modalContent"></div>
+            <button onclick="closeModal()" style="margin-top:15px">关闭</button>
+        </div>
+    </div>
+
+    <script>
+        // 学生名单
+        const fullNameList = ["陈劲桥","陈玟言","陈醉墨","单彦桐","苟轩鸣","黎瑞霖","李嘉阳","李景耘","李洛亦","李提醍","廖祯真","刘子洋","路依文","马平川","牟柏然","牟林昊","邱晚宸","石逸朗","谭涞予","王翊丞","王梓铭","王梓熙","熊珮淞","杨秉宸","杨麒晔","尹逸知","张峻源","周子槺","曾泊匀","陈玟伲","陈清桐","陈臆米","陈阅微","郝洺伊","胡尹馨","兰怡霖","李恩霖","李露萍","刘芷妍","梅锦陌","汤婉扬","唐维林","王施懿","王婉琳","王奕菲","文理妍","吴佩瑶","杨睿一","袁沐希","张露涵","张思甜","张文奕","张雨禾"];
+
+        let students = JSON.parse(localStorage.getItem('students')) || [];
+        let prizes = JSON.parse(localStorage.getItem('prizes')) || [];
+
+        // 初始化学生数据
+        if(students.length === 0) {
+            fullNameList.forEach((name, index) => {
+                students.push({ 
+                    id: index+1, 
+                    name: name, 
+                    score: 0, 
+                    coins: 0 
+                });
+            });
+        }
+
+        // 自动保存
+        setInterval(saveData, 300000);
+
+        // 核心功能
+        function changeScore(index, delta) {
+            students[index].score += delta;
+            students[index].coins += delta;
+            renderStudents();
+        }
+
+        function batchAdd() {
+            let score = parseInt(document.getElementById('batchScore').value) || 0;
+            students.forEach(s => { 
+                s.score += score; 
+                s.coins += score; 
+            });
+            renderStudents();
+        }
+
+        function batchSubtract() {
+            let score = parseInt(document.getElementById('batchScore').value) || 0;
+            students.forEach(s => { 
+                s.score -= score; 
+                s.coins -= score; 
+            });
+            renderStudents();
+        }
+
+        // 渲染学生卡片
+        function renderStudents() {
+            const container = document.getElementById('studentContainer');
+            container.innerHTML = students.map((s, index) => `
+                <div class="student-card">
+                    <div class="student-id">学号：${s.id}</div>
+                    <div class="student-name">${s.name}</div>
+                    
+                    <div class="score-box ${s.score < 0 ? 'negative' : ''}">
+                        ✨ 积分：${s.score}
+                        <div>
+                            <button onclick="changeScore(${index}, 1)">➕</button>
+                            <button onclick="changeScore(${index}, -1)">➖</button>
+                        </div>
+                    </div>
+                    
+                    <div class="coins-box">
+                        🪙 兑换币：${s.coins}
+                        <button onclick="showRedeem(${index})">兑换奖品</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 学生管理
+        function showAddStudent() {
+            document.getElementById('modalContent').innerHTML = `
+                <h3>➕ 添加学生</h3>
+                <input type="text" id="newName" placeholder="学生姓名">
+                <button onclick="addStudent()">确认添加</button>
+            `;
+            showModal();
+        }
+
+        function addStudent() {
+            const newName = document.getElementById('newName').value;
+            if(newName) {
+                students.push({
+                    id: students.length + 1,
+                    name: newName,
+                    score: 0,
+                    coins: 0
+                });
+                closeModal();
+                renderStudents();
+            }
+        }
+
+        // 奖品管理
+        function showAddPrize() {
+            document.getElementById('modalContent').innerHTML = `
+                <h3>🎁 奖品管理</h3>
+                <div style="max-height:200px;overflow-y:auto">
+                    ${prizes.map((p,i) => `
+                        <div style="padding:5px;border-bottom:1px solid #eee">
+                            ${p.name}（${p.cost}币）
+                            <button onclick="deletePrize(${i})">删除</button>
+                        </div>
+                    `).join('')}
+                </div>
+                <h4>添加新奖品：</h4>
+                <input type="text" id="prizeName" placeholder="奖品名称">
+                <input type="number" id="prizeCost" placeholder="所需币数">
+                <button onclick="addPrize()">添加</button>
+            `;
+            showModal();
+        }
+
+        function addPrize() {
+            const name = document.getElementById('prizeName').value;
+            const cost = parseInt(document.getElementById('prizeCost').value);
+            if(name && cost > 0) {
+                prizes.push({ name, cost });
+                closeModal();
+                showAddPrize();
+            }
+        }
+
+        function deletePrize(index) {
+            if(confirm('确定要删除这个奖品吗？')) {
+                prizes.splice(index, 1);
+                showAddPrize();
+            }
+        }
+
+        // 兑换功能
+        function showRedeem(studentIndex) {
+            const student = students[studentIndex];
+            document.getElementById('modalContent').innerHTML = `
+                <h3>🎁 ${student.name} 的兑换</h3>
+                <p>当前兑换币：${student.coins}</p>
+                <div style="max-height:300px;overflow-y:auto">
+                    ${prizes.map((p, index) => `
+                        <div style="padding:5px;border-bottom:1px solid #eee">
+                            ${p.name}（需要 ${p.cost} 币）
+                            <button onclick="confirmRedeem(${studentIndex}, ${index})" 
+                                ${student.coins < p.cost ? 'disabled style="background:#ccc"' : ''}>
+                                兑换
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+                ${prizes.length === 0 ? '<p>暂无奖品，请先添加</p>' : ''}
+            `;
+            showModal();
+        }
+
+        function confirmRedeem(studentIndex, prizeIndex) {
+            const student = students[studentIndex];
+            const prize = prizes[prizeIndex];
+            
+            if(student.coins >= prize.cost) {
+                student.coins -= prize.cost;
+                renderStudents();
+                closeModal();
+                alert(`兑换成功！${student.name} 获得【${prize.name}】`);
+            } else {
+                alert('兑换币不足！');
+            }
+        }
+
+        // 通用功能
+        function showModal() { document.getElementById('modal').style.display = 'block'; }
+        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+        function saveData() { 
+            localStorage.setItem('students', JSON.stringify(students)); 
+            localStorage.setItem('prizes', JSON.stringify(prizes)); 
+        }
+        function clearScores() {
+            if(confirm('确定要清除所有积分和兑换币吗？')) {
+                students.forEach(s => { s.score = 0; s.coins = 0; });
+                saveData();
+                renderStudents();
+                alert('已清零！');
+            }
+        }
+        function exportData() {
+            const wsData = students.map(s => [s.id, s.name, s.score, s.coins]);
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet([['学号','姓名','积分','兑换币'], ...wsData]);
+            XLSX.utils.book_append_sheet(wb, ws, "学生数据");
+            XLSX.writeFile(wb, `积分数据_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // 初始化
+        document.getElementById('date').textContent = new Date().toLocaleDateString();
+        renderStudents();
+    </script>
+</body>
+</html>
